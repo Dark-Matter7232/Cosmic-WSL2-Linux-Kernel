@@ -235,28 +235,22 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	ANNOTATE_NOENDBR // above
 
 #ifdef CONFIG_SMP
-	/* Is this the boot CPU coming up? */
-	movl	smpboot_control(%rip), %edx
-	testl	$STARTUP_SECONDARY, %edx
-	jz	.Linit_cpu0_data
-
 	/*
 	 * For parallel boot, the APIC ID is retrieved from CPUID, and then
 	 * used to look up the CPU number.  For booting a single CPU, the
 	 * CPU number is encoded in smpboot_control.
 	 *
-	 * Bit 31	STARTUP_SECONDARY flag (checked above)
 	 * Bit 30	STARTUP_APICID_CPUID_0B flag (use CPUID 0x0b)
 	 * Bit 29	STARTUP_APICID_CPUID_01 flag (use CPUID 0x01)
 	 * Bit 0-24	CPU# if STARTUP_APICID_CPUID_xx flags are not set
 	 */
-	testl	$STARTUP_APICID_CPUID_0B, %edx
+	movl	smpboot_control(%rip), %ecx
+	testl	$STARTUP_APICID_CPUID_0B, %ecx
 	jnz	.Luse_cpuid_0b
-	testl	$STARTUP_APICID_CPUID_01, %edx
+	testl	$STARTUP_APICID_CPUID_01, %ecx
 	jnz	.Luse_cpuid_01
-	andl	$0x0FFFFFFF, %edx
-	movl	%edx, %ecx
-	jmp	.Linit_cpu_data
+	andl	$0x0FFFFFFF, %ecx
+	jmp	.Lsetup_cpu
 
 .Luse_cpuid_01:
 	mov	$0x01, %eax
@@ -277,7 +271,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 
 .Lfind_cpunr:
 	cmpl	(%rbx,%rcx,4), %edx
-	jz	.Linit_cpu_data
+	jz	.Lsetup_cpu
 	inc	%ecx
 	cmpl	nr_cpu_ids(%rip), %ecx
 	jb	.Lfind_cpunr
@@ -291,18 +285,13 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	hlt
 	jmp	1b
 
-.Linit_cpu0_data:
-	movq	__per_cpu_offset(%rip), %rdx
-	jmp	.Lsetup_cpu
-
-.Linit_cpu_data:
+.Lsetup_cpu:
 	/* Get the per cpu offset for the given CPU# which is in ECX */
 	movq	__per_cpu_offset(,%rcx,8), %rdx
 #else
 	xorl	%edx, %edx
 #endif /* CONFIG_SMP */
 
-.Lsetup_cpu:
 	/*
 	 * Setup a boot time stack - Any secondary CPU will have lost its stack
 	 * by now because the cr3-switch above unmaps the real-mode stack
